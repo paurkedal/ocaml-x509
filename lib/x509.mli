@@ -132,7 +132,54 @@ module Distinguished_name : sig
   (** [equal a b] is [true] if the distinguished names [a] and [b] are equal. *)
   val equal : t -> t -> bool
 
-  (** [pp ppf dn] pretty-prints the distinguished name. *)
+  (** [make_pp ()] creates a pretty-printer customized according to the optional
+      arguments.
+
+      @param preset
+        Determines escaping and the defaults for the other parameters.
+        - [`RFC4514] produces the
+          {{:https://tools.ietf.org/html/rfc4514}RFC4514} format, using minimal
+          spacing but adding break hints where allowed.
+        - [`OpenSSL] produces the a format similar to OpenSSL. Compared to to
+          [`RFC4514], RDNs are not reversed, and space is added after the comma
+          and around the plus and equal signs.
+        - [`OSF] emits RDNs prefixed by slashes and separated by cuts in
+          non-reversed order. This format is designed by analogy to RFC4514 and
+          may currently not be fully compliant with the OSF specifications.
+      @param reverse
+        Whether to print the RDNs in reverse order of the ASN.1 representation.
+      @param rdn_sep
+        The separator between RDNs.  For RFC4514 compliance either a comma or a
+        semicolon must be used, with optional whitespace on either side.
+      @param ava_sep
+        The separator between attribute value assertions (AVAs).  For RFC4514
+        compliance, this must be a plus sign surrounded by optional whitespace.
+        A line break is only allowed after the plus sign.
+      @param ava_equal
+        The separator between the attribute type and value.  For RFC4514
+        compliance, this must be an equal sign surrounded by optional
+        non-breaking space.
+      @param wrap
+        This is applied to the generated formatter at last, and can be used to
+        add a box environment or delimiters. In case of the OSF preset, it is
+        used to add a leading slash.
+
+      The pretty-printer can be wrapped in a box to control line breaking and
+      set it apart, otherwise the RDN componets will flow with the surrounding
+      text. *)
+  val make_pp :
+    preset: [`RFC4514 | `OpenSSL | `OSF] ->
+    ?reverse: bool ->
+    ?rdn_sep: unit Fmt.t ->
+    ?ava_sep: unit Fmt.t ->
+    ?ava_equal: unit Fmt.t ->
+    ?wrap: (t Fmt.t -> t Fmt.t) ->
+    unit -> t Fmt.t
+
+  (** [pp ppf dn] pretty-prints the distinguished name. This is currently
+      [make_pp ~preset:`OSF ()]. If your application relies on the precise
+      format, it is advicable to create a custom formatter with {!make_pp} to
+      guard against future changes to the default format. *)
   val pp : t Fmt.t
 
   (** [decode_der cs] is [dn], the ASN.1 decoded distinguished name of [cs]. *)
