@@ -17,25 +17,47 @@ type attribute =
   | Generation of string
   | Other of Asn.oid * string
 
-let pp_attribute ppf attr =
+(* Escaping is described in RFC4514. Escaing '=' is optional, otherwise the
+ * following is minimal, using the character instead of hex where possible. *)
+let pp_attribute_value ?(osf = false) () ppf s =
+  let n = String.length s in
+  for i = 0 to n - 1 do
+    match s.[i] with
+    | '#' when i = 0 -> Fmt.string ppf "\\#"
+    | ' ' when i = 0 || i = n - 1 -> Fmt.string ppf "\\ "
+    | ',' when not osf -> Fmt.string ppf "\\,"
+    | ';' when not osf -> Fmt.string ppf "\\;"
+    | '/' when osf -> Fmt.string ppf "\\/"
+    | '"' | '+' | '<' | '=' | '>' | '\\' as c -> Fmt.pf ppf "\\%c" c
+    | '\x00' -> Fmt.string ppf "\\00"
+    | c -> Fmt.char ppf c
+  done
+
+let pp_string_hex ppf s =
+  for i = 0 to String.length s - 1 do
+    Fmt.pf ppf "%02x" (Char.code s.[i])
+  done
+
+let pp_attribute ?osf () ppf attr =
+  let pp_av = pp_attribute_value ?osf () in
   match attr with
-  | CN s -> Fmt.pf ppf "CN=%s" s
-  | Serialnumber s -> Fmt.pf ppf "Serialnumber=%s" s
-  | C s -> Fmt.pf ppf "C=%s" s
-  | L s -> Fmt.pf ppf "L=%s" s
-  | SP s -> Fmt.pf ppf "SP=%s" s
-  | O s -> Fmt.pf ppf "O=%s" s
-  | OU s -> Fmt.pf ppf "OU=%s" s
-  | T s -> Fmt.pf ppf "T=%s" s
-  | DNQ s -> Fmt.pf ppf "DNQ=%s" s
-  | Mail s -> Fmt.pf ppf "Mail=%s" s
-  | DC s -> Fmt.pf ppf "DC=%s" s
-  | Given_name s -> Fmt.pf ppf "Given_name=%s" s
-  | Surname s -> Fmt.pf ppf "Surname=%s" s
-  | Initials s -> Fmt.pf ppf "Initials=%s" s
-  | Pseudonym s -> Fmt.pf ppf "Pseudonym=%s" s
-  | Generation s -> Fmt.pf ppf "Generation=%s" s
-  | Other (oid, s) -> Fmt.pf ppf "%a=%s" Asn.OID.pp oid s
+  | CN s -> Fmt.pf ppf "CN=%a" pp_av s
+  | Serialnumber s -> Fmt.pf ppf "Serialnumber=%a" pp_av s
+  | C s -> Fmt.pf ppf "C=%a" pp_av s
+  | L s -> Fmt.pf ppf "L=%a" pp_av s
+  | SP s -> Fmt.pf ppf "SP=%a" pp_av s
+  | O s -> Fmt.pf ppf "O=%a" pp_av s
+  | OU s -> Fmt.pf ppf "OU=%a" pp_av s
+  | T s -> Fmt.pf ppf "T=%a" pp_av s
+  | DNQ s -> Fmt.pf ppf "DNQ=%a" pp_av s
+  | Mail s -> Fmt.pf ppf "Mail=%a" pp_av s
+  | DC s -> Fmt.pf ppf "DC=%a" pp_av s
+  | Given_name s -> Fmt.pf ppf "Given_name=%a" pp_av s
+  | Surname s -> Fmt.pf ppf "Surname=%a" pp_av s
+  | Initials s -> Fmt.pf ppf "Initials=%a" pp_av s
+  | Pseudonym s -> Fmt.pf ppf "Pseudonym=%a" pp_av s
+  | Generation s -> Fmt.pf ppf "Generation=%a" pp_av s
+  | Other (oid, s) -> Fmt.pf ppf "%a=#%a" Asn.OID.pp oid pp_string_hex s
 
 module K = struct
   type t = attribute
@@ -94,12 +116,20 @@ let equal a b =
   List.length a = List.length b &&
   List.for_all2 Relative_distinguished_name.equal a b
 
-let pp ppf dn =
+let make_pp ?(style = `RFC_comma) () ppf dn =
+  let pp_a = pp_attribute ~osf:(style = `OSF) () in
   let pp_rdn ppf rdn =
-    Fmt.(list ~sep:(unit " + ") pp_attribute) ppf
+    Fmt.(list ~sep:(unit "+") pp_a) ppf
       (Relative_distinguished_name.elements rdn)
   in
-  Fmt.(list ~sep:(unit "/") pp_rdn) ppf dn
+  match style with
+  | `RFC_comma -> Fmt.(list ~sep:(unit "," ++ cut) pp_rdn) ppf (List.rev dn)
+  | `RFC_comma_sp -> Fmt.(list ~sep:comma pp_rdn) ppf (List.rev dn)
+  | `RFC_semi -> Fmt.(list ~sep:(unit ";" ++ cut) pp_rdn) ppf (List.rev dn)
+  | `RFC_semi_sp -> Fmt.(list ~sep:semi pp_rdn) ppf (List.rev dn)
+  | `OSF -> Fmt.(list (any "/" ++ pp_rdn)) ppf dn
+
+let pp = Fmt.hbox (make_pp ())
 
 module Asn = struct
   open Asn.S
